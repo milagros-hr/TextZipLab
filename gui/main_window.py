@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -20,12 +21,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
 
 from core.file_manager import (
     TEXT_EXTENSIONS,
@@ -74,6 +79,10 @@ class MainWindow(QMainWindow):
                 print(f"Error al cargar la hoja de estilos: {e}")
 
     def init_ui(self) -> None:
+        # Tamaño mínimo e inicial
+        self.setMinimumSize(1100, 700)
+        self.resize(1280, 800)
+
         # Widget y Layout principal vertical
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
@@ -104,20 +113,30 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(20)
 
-        # ------------------ PANEL IZQUIERDO (CONTROLES) ------------------
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        # ------------------ PANEL IZQUIERDO (CONTROLES CON SCROLL) ------------------
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        left_scroll.setFixedWidth(320)
+        left_scroll.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+
+        left_content = QWidget()
+        left_content.setObjectName("left_content")
+        left_layout = QVBoxLayout(left_content)
+        left_layout.setContentsMargins(0, 0, 8, 0)
         left_layout.setSpacing(15)
 
         # Grupo: Carga de Archivo
-        load_group = QGroupBox("Cargar Archivo de Texto")
+        load_group = QGroupBox("Archivo de Entrada")
         load_layout = QVBoxLayout(load_group)
-        load_layout.setSpacing(12)
+        load_layout.setSpacing(10)
 
-        self.load_button = QPushButton("Seleccionar archivo")
-        self.load_button.setObjectName("load_button")
+        self.load_button = QPushButton("Seleccionar Archivo")
+        self.load_button.setObjectName("btn_success")
         self.load_button.clicked.connect(self.select_file)
+        self.load_button.setToolTip("Cargar un archivo de texto plano para iniciar el análisis")
         load_layout.addWidget(self.load_button)
 
         # Tarjeta para mostrar la información del archivo
@@ -135,10 +154,10 @@ class MainWindow(QMainWindow):
         load_layout.addWidget(self.info_card)
         left_layout.addWidget(load_group)
 
-        # Grupo: Operaciones de Compresión
+        # Grupo: Algoritmos y Operaciones
         ops_group = QGroupBox("Algoritmos y Operaciones")
         ops_layout = QVBoxLayout(ops_group)
-        ops_layout.setSpacing(12)
+        ops_layout.setSpacing(10)
 
         algo_label = QLabel("Seleccionar algoritmo principal:")
         algo_label.setStyleSheet("color: #a1a1aa; font-weight: 500;")
@@ -148,24 +167,37 @@ class MainWindow(QMainWindow):
         self.algo_selector.addItems(["Huffman", "LZW"])
         ops_layout.addWidget(self.algo_selector)
 
+        # Layout horizontal para Comprimir / Descomprimir
+        comp_decomp_layout = QHBoxLayout()
+        comp_decomp_layout.setSpacing(8)
+
         self.compress_button = QPushButton("Comprimir")
+        self.compress_button.setObjectName("btn_action")
         self.compress_button.clicked.connect(self.run_compression)
         self.compress_button.setEnabled(False)
-        ops_layout.addWidget(self.compress_button)
+        self.compress_button.setToolTip("Cargue un archivo de texto primero")
+        comp_decomp_layout.addWidget(self.compress_button)
 
         self.decompress_button = QPushButton("Descomprimir")
+        self.decompress_button.setObjectName("btn_action")
         self.decompress_button.clicked.connect(self.run_decompression)
         self.decompress_button.setEnabled(False)
-        ops_layout.addWidget(self.decompress_button)
+        self.decompress_button.setToolTip("Cargue un archivo de texto primero")
+        comp_decomp_layout.addWidget(self.decompress_button)
 
-        self.compare_button = QPushButton("Comparar ambos algoritmos")
-        self.compare_button.setObjectName("compare_button")
+        ops_layout.addLayout(comp_decomp_layout)
+
+        self.compare_button = QPushButton("Comparar Huffman vs LZW")
+        self.compare_button.setObjectName("btn_compare")
         self.compare_button.clicked.connect(self.compare_algorithms)
         self.compare_button.setEnabled(False)
+        self.compare_button.setToolTip("Cargue un archivo de texto primero")
         ops_layout.addWidget(self.compare_button)
 
-        self.benchmark_button = QPushButton("Ejecutar benchmark académico")
+        self.benchmark_button = QPushButton("Ejecutar Benchmark Completo")
+        self.benchmark_button.setObjectName("btn_compare")
         self.benchmark_button.clicked.connect(self.run_academic_benchmark)
+        self.benchmark_button.setToolTip("Ejecutar benchmark experimental académico en segundo plano")
         ops_layout.addWidget(self.benchmark_button)
 
         left_layout.addWidget(ops_group)
@@ -175,62 +207,94 @@ class MainWindow(QMainWindow):
         persist_layout = QVBoxLayout(persist_group)
         persist_layout.setSpacing(10)
 
-        self.save_bin_button = QPushButton("Guardar comprimido real")
-        self.save_bin_button.clicked.connect(self.save_compressed_bin)
-        self.save_bin_button.setEnabled(False)
-        persist_layout.addWidget(self.save_bin_button)
-
-        self.load_compr_button = QPushButton("Cargar comprimido")
+        self.load_compr_button = QPushButton("Cargar Comprimido")
+        self.load_compr_button.setObjectName("btn_secondary")
         self.load_compr_button.clicked.connect(self.load_compressed_file_gui)
+        self.load_compr_button.setToolTip("Cargar un archivo previamente comprimido (.huff, .lzw, o JSON)")
         persist_layout.addWidget(self.load_compr_button)
 
-        self.decompress_compr_button = QPushButton("Descomprimir")
+        self.decompress_compr_button = QPushButton("Descomprimir Archivo")
+        self.decompress_compr_button.setObjectName("btn_action")
         self.decompress_compr_button.clicked.connect(self.decompress_loaded_file)
         self.decompress_compr_button.setEnabled(False)
+        self.decompress_compr_button.setToolTip("Debe cargar un archivo comprimido primero")
         persist_layout.addWidget(self.decompress_compr_button)
 
-        self.view_recovered_full_button = QPushButton("Ver texto completo")
-        self.view_recovered_full_button.clicked.connect(self.show_full_recovered_text_dialog)
-        self.view_recovered_full_button.setEnabled(False)
-        persist_layout.addWidget(self.view_recovered_full_button)
+        # Guardar y Exportar en horizontal
+        save_export_layout = QHBoxLayout()
+        save_export_layout.setSpacing(8)
 
-        self.save_recovered_button = QPushButton("Guardar recuperado")
-        self.save_recovered_button.clicked.connect(self.save_recovered_text)
-        self.save_recovered_button.setEnabled(False)
-        persist_layout.addWidget(self.save_recovered_button)
+        self.save_bin_button = QPushButton("Guardar .bin")
+        self.save_bin_button.setObjectName("btn_secondary")
+        self.save_bin_button.clicked.connect(self.save_compressed_bin)
+        self.save_bin_button.setEnabled(False)
+        self.save_bin_button.setToolTip("Debe comprimir un archivo primero")
+        save_export_layout.addWidget(self.save_bin_button)
 
-        self.export_json_button = QPushButton("Exportar vista académica JSON")
-        self.export_json_button.setObjectName("compare_button")
+        self.export_json_button = QPushButton("Exportar JSON")
+        self.export_json_button.setObjectName("btn_secondary")
         self.export_json_button.clicked.connect(self.export_academic_json)
         self.export_json_button.setEnabled(False)
-        persist_layout.addWidget(self.export_json_button)
+        self.export_json_button.setToolTip("Debe comprimir un archivo primero")
+        save_export_layout.addWidget(self.export_json_button)
+
+        persist_layout.addLayout(save_export_layout)
+
+        # Ver Recuperado y Guardar Recuperado en horizontal
+        recovered_layout = QHBoxLayout()
+        recovered_layout.setSpacing(8)
+
+        self.view_recovered_full_button = QPushButton("Ver Completo")
+        self.view_recovered_full_button.setObjectName("btn_secondary")
+        self.view_recovered_full_button.clicked.connect(self.show_full_recovered_text_dialog)
+        self.view_recovered_full_button.setEnabled(False)
+        self.view_recovered_full_button.setToolTip("Debe descomprimir un archivo comprimido primero")
+        recovered_layout.addWidget(self.view_recovered_full_button)
+
+        self.save_recovered_button = QPushButton("Guardar Texto")
+        self.save_recovered_button.setObjectName("btn_secondary")
+        self.save_recovered_button.clicked.connect(self.save_recovered_text)
+        self.save_recovered_button.setEnabled(False)
+        self.save_recovered_button.setToolTip("Debe descomprimir un archivo comprimido primero")
+        recovered_layout.addWidget(self.save_recovered_button)
+
+        persist_layout.addLayout(recovered_layout)
 
         left_layout.addWidget(persist_group)
         left_layout.addStretch()
 
-        left_panel.setFixedWidth(300)
-        content_layout.addWidget(left_panel)
+        left_content.setLayout(left_layout)
+        left_scroll.setWidget(left_content)
+        content_layout.addWidget(left_scroll)
 
-        # ------------------ PANEL DERECHO (RESULTADOS) ------------------
+        # ------------------ PANEL DERECHO (RESULTADOS RESPONSIVOS) ------------------
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(15)
+        right_layout.setSpacing(0)
 
-        # Área de Reporte de Texto
+        # Splitter vertical
+        self.right_splitter = QSplitter(Qt.Vertical)
+        self.right_splitter.setObjectName("right_splitter")
+
+        # 1. Reporte
+        report_widget = QWidget()
+        report_vbox = QVBoxLayout(report_widget)
+        report_vbox.setContentsMargins(0, 0, 0, 8)
         report_title = QLabel("Reporte Detallado de Resultados")
-        report_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7;")
-        right_layout.addWidget(report_title)
-        
+        report_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7; margin-bottom: 2px;")
         self.report_area = QTextEdit()
         self.report_area.setReadOnly(True)
-        self.report_area.setPlaceholderText("Los reportes analíticos y de validación en HTML aparecerán aquí al comprimir...")
-        right_layout.addWidget(self.report_area, stretch=3)
+        report_vbox.addWidget(report_title)
+        report_vbox.addWidget(self.report_area)
+        self.right_splitter.addWidget(report_widget)
 
-        # Tabla Comparativa
+        # 2. Tabla
+        table_widget = QWidget()
+        table_vbox = QVBoxLayout(table_widget)
+        table_vbox.setContentsMargins(0, 0, 0, 8)
         table_title = QLabel("Tabla de Métricas y Comparación")
-        table_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7;")
-        right_layout.addWidget(table_title)
+        table_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7; margin-bottom: 2px;")
         
         self.results_table = QTableWidget()
         self.results_table.setColumnCount(8)
@@ -247,15 +311,69 @@ class MainWindow(QMainWindow):
         
         # Ajustar headers de tabla
         header = self.results_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for i in range(self.results_table.columnCount()):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.results_table.verticalHeader().setVisible(False)
-        right_layout.addWidget(self.results_table, stretch=2)
+        self.results_table.verticalHeader().setDefaultSectionSize(36)
+        
+        table_vbox.addWidget(table_title)
+        table_vbox.addWidget(self.results_table)
+        self.right_splitter.addWidget(table_widget)
 
+        # 3. Vista Previa de Texto
+        preview_widget = QWidget()
+        preview_vbox = QVBoxLayout(preview_widget)
+        preview_vbox.setContentsMargins(0, 0, 0, 0)
+        preview_title = QLabel("Vista Previa del Texto (Original / Recuperado)")
+        preview_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7; margin-bottom: 2px;")
+        
+        self.preview_area = QTextEdit()
+        self.preview_area.setReadOnly(True)
+        self.preview_area.setPlaceholderText("La vista previa del texto cargado o recuperado se mostrará aquí...")
+        
+        preview_vbox.addWidget(preview_title)
+        preview_vbox.addWidget(self.preview_area)
+        self.right_splitter.addWidget(preview_widget)
+
+        # Establecer proporciones de estiramiento inicial (3:2:2)
+        self.right_splitter.setStretchFactor(0, 3)
+        self.right_splitter.setStretchFactor(1, 2)
+        self.right_splitter.setStretchFactor(2, 2)
+
+        right_layout.addWidget(self.right_splitter)
         content_layout.addWidget(right_panel)
         main_layout.addWidget(content_widget)
 
         self.setCentralWidget(main_widget)
         self.statusBar().showMessage("Listo")
+
+        # Cargar página de bienvenida inicial
+        self.show_welcome_page()
+
+    def show_welcome_page(self) -> None:
+        """Muestra una página de bienvenida académica en el reporte."""
+        welcome_html = (
+            "<div style=\"font-family: 'Segoe UI', sans-serif; color: #e4e4e7; padding: 15px; line-height: 1.6;\">"
+            "<h2 style=\"color: #a78bfa; margin-top: 0; margin-bottom: 12px; border-bottom: 2px solid #27272a; padding-bottom: 8px;\">"
+            "¡Bienvenido a TextZipLab!</h2>"
+            "<p style=\"color: #a1a1aa; font-size: 13px; margin-bottom: 20px;\">"
+            "Laboratorio experimental para el análisis comparativo de algoritmos de compresión "
+            "de texto sin pérdida (Huffman vs LZW). Esta interfaz académica permite evaluar el rendimiento "
+            "temporal, físico y lógico de los algoritmos en tiempo real.</p>"
+            "<div style=\"background-color: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 16px;\">"
+            "<h3 style=\"color: #f4f4f5; margin-top: 0; margin-bottom: 10px; font-size: 13px; text-transform: uppercase;\">"
+            "Guía de Inicio Rápido</h3>"
+            "<ol style=\"margin: 0; padding-left: 20px; color: #a1a1aa; font-size: 12px;\">"
+            "<li style=\"margin-bottom: 8px;\"><b>Cargar Archivo:</b> Seleccione un archivo de texto en el panel izquierdo (.txt, .json, .csv, etc.).</li>"
+            "<li style=\"margin-bottom: 8px;\"><b>Ejecutar Algoritmo:</b> Elija Huffman o LZW y presione <i>Comprimir</i> para ver las métricas analíticas.</li>"
+            "<li style=\"margin-bottom: 8px;\"><b>Comparar Rendimiento:</b> Presione <i>Comparar Huffman vs LZW</i> para contrastar ahorro de espacio y velocidad.</li>"
+            "<li style=\"margin-bottom: 8px;\"><b>Persistencia:</b> Guarde el archivo comprimido real (.bin) o cargue uno existente para validar su descompresión.</li>"
+            "</ol></div></div>"
+        )
+        self.report_area.setHtml(welcome_html)
+
 
     def select_file(self) -> None:
         """Abre un diálogo de archivo y valida la selección del usuario."""
@@ -301,10 +419,20 @@ class MainWindow(QMainWindow):
             self.results_table.setRowCount(0)
             self.last_results.clear()
 
-            # Habilitar botones de acción
+            # Mostrar vista previa del texto original
+            lim = 2000
+            preview_snippet = text[:lim]
+            if len(text) > lim:
+                preview_snippet += "\n\n... [VISTA PREVIA TRUNCADA - Use 'Ver Completo' si se recupera]"
+            self.preview_area.setPlainText(preview_snippet)
+
+            # Habilitar botones de acción y actualizar tooltips
             self.compress_button.setEnabled(True)
+            self.compress_button.setToolTip("Comprimir el texto cargado usando el algoritmo seleccionado")
             self.decompress_button.setEnabled(False)
+            self.decompress_button.setToolTip("Debe comprimir el archivo primero")
             self.compare_button.setEnabled(True)
+            self.compare_button.setToolTip("Comparar Huffman y LZW sobre el archivo cargado")
             self.statusBar().showMessage(f"Archivo cargado con éxito: {name}")
 
         except ValueError as e:
@@ -348,8 +476,11 @@ class MainWindow(QMainWindow):
 
             # Habilitar descompresión y persistencia
             self.decompress_button.setEnabled(True)
+            self.decompress_button.setToolTip("Descomprimir el archivo recién comprimido para validar integridad")
             self.save_bin_button.setEnabled(True)
+            self.save_bin_button.setToolTip("Guardar los datos comprimidos en un archivo binario (.huff / .lzw)")
             self.export_json_button.setEnabled(True)
+            self.export_json_button.setToolTip("Exportar el objeto comprimido con metadatos estructurados en formato JSON")
             self.statusBar().showMessage(f"Compresión con {algo} completada.")
 
         except Exception as e:
@@ -473,8 +604,11 @@ class MainWindow(QMainWindow):
 
             self.last_results = [h_result, l_result]
             self.decompress_button.setEnabled(True)
+            self.decompress_button.setToolTip("Descomprimir el último resultado de comparación")
             self.save_bin_button.setEnabled(True)
+            self.save_bin_button.setToolTip("Guardar la última compresión de la comparación en archivo binario")
             self.export_json_button.setEnabled(True)
+            self.export_json_button.setToolTip("Exportar la última compresión de la comparación en formato JSON")
             self.statusBar().showMessage("Comparación finalizada.")
 
         except Exception as e:
@@ -851,10 +985,13 @@ class MainWindow(QMainWindow):
             # Limpiar estado recuperado previo
             self.decompressed_text_recovered = None
             self.save_recovered_button.setEnabled(False)
+            self.save_recovered_button.setToolTip("Debe descomprimir el archivo comprimido primero")
             self.view_recovered_full_button.setEnabled(False)
+            self.view_recovered_full_button.setToolTip("Debe descomprimir el archivo comprimido primero")
             
             # Habilitar botones correspondientes
             self.decompress_compr_button.setEnabled(True)
+            self.decompress_compr_button.setToolTip("Descomprimir el archivo comprimido cargado")
             
             name = Path(file_path).name
             algo = loaded_data.get("algorithm")
@@ -906,21 +1043,16 @@ class MainWindow(QMainWindow):
             decompressed_text = compressor.decompress(self.loaded_compressed_data)
             self.decompressed_text_recovered = decompressed_text
             self.save_recovered_button.setEnabled(True)
+            self.save_recovered_button.setToolTip("Guardar el texto descomprimido en el disco")
             self.view_recovered_full_button.setEnabled(True)
+            self.view_recovered_full_button.setToolTip("Ver el texto descomprimido completo en una ventana modal")
             
-            # Vista previa del texto recuperado (hasta 5000 caracteres)
-            lim = 5000
+            # Vista previa del texto recuperado (hasta 2000 caracteres)
+            lim = 2000
             preview_snippet = decompressed_text[:lim]
-            is_partial = len(decompressed_text) > lim
-            text_badge = f"<span style='color: #f59e0b; font-weight: bold;'>[VISTA PREVIA PARCIAL - Mostrando primeros 5,000 caracteres]</span>" if is_partial else f"<span style='color: #10b981; font-weight: bold;'>[CONTENIDO COMPLETO]</span>"
-            
-            # Reemplazar caracteres HTML especiales en la vista previa
-            preview_snippet_html = (
-                preview_snippet.replace("&", "&amp;")
-                               .replace("<", "&lt;")
-                               .replace(">", "&gt;")
-                               .replace("\n", "<br>")
-            )
+            if len(decompressed_text) > lim:
+                preview_snippet += "\n\n... [VISTA PREVIA TRUNCADA - Use 'Ver Completo' para visualizar la totalidad] ..."
+            self.preview_area.setPlainText(preview_snippet)
             
             # Calcular tamaño real del texto recuperado
             orig_enc = self.loaded_compressed_data.get("original_encoding")
@@ -1009,11 +1141,6 @@ class MainWindow(QMainWindow):
                 f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Ahorro Teórico de Espacio:</td><td style='padding: 4px 8px;'>{theoretical_saving_str}</td></tr>"
                 f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Ahorro Real en Disco:</td><td style='padding: 4px 8px;'>{disk_saving_str}</td></tr>"
                 f"</table>"
-                
-                f"<div style='margin-bottom: 8px;'><b>Vista Previa del Contenido Recuperado:</b> {text_badge}</div>"
-                f"<div style='background-color: #111827; border: 1px solid #1f2937; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-family: monospace; font-size: 11px; color: #e4e4e7; max-height: 250px; overflow-y: auto; text-align: left;'>"
-                f"{preview_snippet_html}"
-                f"</div>"
                 f"{academic_note}"
                 f"</div>"
             )

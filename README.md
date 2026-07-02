@@ -130,11 +130,14 @@ python main.py --gui
 ```
 
 ### 3. Interfaz Gráfica de Usuario (Dashboard Premium)
-La aplicación cuenta con una interfaz gráfica rediseñada bajo una estética moderna de tema oscuro (Slate/Zinc):
-* **Estructura tipo Dashboard**: Cabecera premium integrada con título estilizado en color violeta y subtítulo de información experimental.
-* **Tarjeta de Detalles de Archivo**: Visualización estructurada del tamaño en bytes, codificación automática y desglose de caracteres, palabras y líneas del texto mediante un panel `QFrame` dedicado.
-* **Reportes Analíticos en HTML**: Renderizado interactivo en el panel de resultados usando tablas HTML limpias y badges visuales para validación de integridad (`OK` en verde esmeralda / `ERROR` en rojo).
-* **Tabla Comparativa Dinámica**: Celdas auto-alineadas con las métricas clave de compresión, destacando en negrita el algoritmo y el porcentaje de ahorro de espacio.
+La aplicación cuenta con una interfaz gráfica moderna, completamente responsiva y adaptada a múltiples resoluciones (desde 1366x768 hasta 1080p y pantallas maximizadas):
+* **Estructura de Controles Responsiva**: El panel de control izquierdo está contenido en un `QScrollArea` dinámico para evitar solapamientos o botones recortados en pantallas de baja resolución vertical.
+* **Agrupamiento y UX Avanzada**: Botones organizados en cuadrículas y layouts horizontales limpios con tooltips detallados e interactivos que explican los requisitos previos cuando una acción está deshabilitada.
+* **Panel de Resultados Multi-Panel**: El panel derecho utiliza un `QSplitter` vertical ajustable para dividir de manera profesional tres secciones clave:
+  * **Reporte Detallado**: Renderiza los reportes analíticos en HTML estructurado y limpio, incluyendo badges de colores para la validación byte a byte.
+  * **Tabla de Métricas**: Muestra las comparaciones numéricas clave, alineadas y con auto-ajuste de columnas para evitar recortes de texto.
+  * **Vista Previa de Texto**: Un área dedicada para visualizar inmediatamente fragmentos del archivo de texto original cargado o del texto recuperado tras la descompresión.
+* **Estética Oscura Profesional**: Implementada a través de un archivo `styles.qss` centralizado con una paleta de colores sofisticada (fondos oscuros, acentos púrpura/índigo, notificaciones verde/rojo) y tipografía moderna.
 
 ### 4. Ejecutar Benchmark Académico
 Para analizar los algoritmos bajo diferentes tamaños y tipos de datos (repetitivos, patrones, código, CSV) y generar el dataset experimental:
