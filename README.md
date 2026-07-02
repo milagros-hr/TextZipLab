@@ -129,13 +129,20 @@ También puedes forzar el inicio de la **Interfaz Gráfica de Usuario (GUI)** di
 python main.py --gui
 ```
 
-### 3. Ejecutar Benchmark Académico
+### 3. Interfaz Gráfica de Usuario (Dashboard Premium)
+La aplicación cuenta con una interfaz gráfica rediseñada bajo una estética moderna de tema oscuro (Slate/Zinc):
+* **Estructura tipo Dashboard**: Cabecera premium integrada con título estilizado en color violeta y subtítulo de información experimental.
+* **Tarjeta de Detalles de Archivo**: Visualización estructurada del tamaño en bytes, codificación automática y desglose de caracteres, palabras y líneas del texto mediante un panel `QFrame` dedicado.
+* **Reportes Analíticos en HTML**: Renderizado interactivo en el panel de resultados usando tablas HTML limpias y badges visuales para validación de integridad (`OK` en verde esmeralda / `ERROR` en rojo).
+* **Tabla Comparativa Dinámica**: Celdas auto-alineadas con las métricas clave de compresión, destacando en negrita el algoritmo y el porcentaje de ahorro de espacio.
+
+### 4. Ejecutar Benchmark Académico
 Para analizar los algoritmos bajo diferentes tamaños y tipos de datos (repetitivos, patrones, código, CSV) y generar el dataset experimental:
 ```bash
 python experiments/benchmark.py
 ```
 
-### 4. Ejecutar Pruebas Unitarias
+### 5. Ejecutar Pruebas Unitarias
 Para correr la batería completa de 22 pruebas automatizadas (cobertura de casos extremos y unicode):
 ```bash
 python -m pytest

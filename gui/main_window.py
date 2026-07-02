@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -41,7 +43,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("TextZipLab - Analizador y Compresor Multiformato")
-        self.resize(1100, 750)
+        self.resize(1150, 800)
 
         # Variables de estado
         self.current_text: str = ""
@@ -65,11 +67,35 @@ class MainWindow(QMainWindow):
                 print(f"Error al cargar la hoja de estilos: {e}")
 
     def init_ui(self) -> None:
-        # Widget y Layout principal
+        # Widget y Layout principal vertical
         main_widget = QWidget()
-        main_layout = QHBoxLayout(main_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
+
+        # ------------------ CABECERA (HEADER BANNER) ------------------
+        header_widget = QWidget()
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(5, 0, 5, 5)
+        header_layout.setSpacing(3)
+
+        title_label = QLabel("TextZipLab")
+        title_label.setObjectName("title_label")
+        title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #a78bfa;")
+        
+        subtitle_label = QLabel("Laboratorio experimental y analizador comparativo de compresión de textos (Huffman vs LZW)")
+        subtitle_label.setObjectName("subtitle_label")
+        subtitle_label.setStyleSheet("color: #71717a; font-size: 12px;")
+
+        header_layout.addWidget(title_label)
+        header_layout.addWidget(subtitle_label)
+        main_layout.addWidget(header_widget)
+
+        # ------------------ CONTENIDO SPLIT ------------------
+        content_widget = QWidget()
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(20)
 
         # ------------------ PANEL IZQUIERDO (CONTROLES) ------------------
         left_panel = QWidget()
@@ -80,18 +106,26 @@ class MainWindow(QMainWindow):
         # Grupo: Carga de Archivo
         load_group = QGroupBox("Cargar Archivo de Texto")
         load_layout = QVBoxLayout(load_group)
-        load_layout.setSpacing(10)
+        load_layout.setSpacing(12)
 
         self.load_button = QPushButton("Seleccionar archivo")
         self.load_button.setObjectName("load_button")
         self.load_button.clicked.connect(self.select_file)
         load_layout.addWidget(self.load_button)
 
-        self.file_info_label = QLabel("Ningún archivo cargado.")
+        # Tarjeta para mostrar la información del archivo
+        self.info_card = QFrame()
+        self.info_card.setObjectName("file_info_card")
+        card_layout = QVBoxLayout(self.info_card)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(6)
+
+        self.file_info_label = QLabel("Ningún archivo cargado actualmente.")
         self.file_info_label.setWordWrap(True)
-        self.file_info_label.setStyleSheet("color: #a1a1aa;")
-        load_layout.addWidget(self.file_info_label)
+        self.file_info_label.setStyleSheet("color: #a1a1aa; line-height: 1.4;")
+        card_layout.addWidget(self.file_info_label)
         
+        load_layout.addWidget(self.info_card)
         left_layout.addWidget(load_group)
 
         # Grupo: Operaciones de Compresión
@@ -99,7 +133,10 @@ class MainWindow(QMainWindow):
         ops_layout = QVBoxLayout(ops_group)
         ops_layout.setSpacing(12)
 
-        ops_layout.addWidget(QLabel("Seleccionar algoritmo principal:"))
+        algo_label = QLabel("Seleccionar algoritmo principal:")
+        algo_label.setStyleSheet("color: #a1a1aa; font-weight: 500;")
+        ops_layout.addWidget(algo_label)
+        
         self.algo_selector = QComboBox()
         self.algo_selector.addItems(["Huffman", "LZW"])
         ops_layout.addWidget(self.algo_selector)
@@ -127,8 +164,8 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(ops_group)
         left_layout.addStretch()
 
-        left_panel.setFixedWidth(280)
-        main_layout.addWidget(left_panel)
+        left_panel.setFixedWidth(300)
+        content_layout.addWidget(left_panel)
 
         # ------------------ PANEL DERECHO (RESULTADOS) ------------------
         right_panel = QWidget()
@@ -137,14 +174,20 @@ class MainWindow(QMainWindow):
         right_layout.setSpacing(15)
 
         # Área de Reporte de Texto
-        right_layout.addWidget(QLabel("<b>Reporte de Resultados</b>"))
+        report_title = QLabel("Reporte Detallado de Resultados")
+        report_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7;")
+        right_layout.addWidget(report_title)
+        
         self.report_area = QTextEdit()
         self.report_area.setReadOnly(True)
-        self.report_area.setPlaceholderText("Los reportes detallados y la información de validación aparecerán aquí...")
+        self.report_area.setPlaceholderText("Los reportes analíticos y de validación en HTML aparecerán aquí al comprimir...")
         right_layout.addWidget(self.report_area, stretch=3)
 
         # Tabla Comparativa
-        right_layout.addWidget(QLabel("<b>Tabla Comparativa</b>"))
+        table_title = QLabel("Tabla de Métricas y Comparación")
+        table_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #e4e4e7;")
+        right_layout.addWidget(table_title)
+        
         self.results_table = QTableWidget()
         self.results_table.setColumnCount(8)
         self.results_table.setHorizontalHeaderLabels([
@@ -164,7 +207,8 @@ class MainWindow(QMainWindow):
         self.results_table.verticalHeader().setVisible(False)
         right_layout.addWidget(self.results_table, stretch=2)
 
-        main_layout.addWidget(right_panel)
+        content_layout.addWidget(right_panel)
+        main_layout.addWidget(content_widget)
 
         self.setCentralWidget(main_widget)
         self.statusBar().showMessage("Listo")
@@ -197,12 +241,15 @@ class MainWindow(QMainWindow):
             lines = text.count("\n") + 1 if text else 0
 
             self.file_info_label.setText(
-                f"<b>Archivo:</b> {name}<br>"
-                f"<b>Tamaño:</b> {size:,} bytes ({size*8:,} bits)<br>"
+                f"<div style='line-height: 1.5; color: #f4f4f5;'>"
+                f"<b>Nombre:</b> <span style='color: #a78bfa;'>{name}</span><br>"
+                f"<b>Tamaño:</b> {size:,} bytes<br>"
                 f"<b>Codificación:</b> {enc}<br>"
-                f"<b>Caracteres:</b> {total_chars:,}<br>"
-                f"<b>Palabras:</b> {words:,}<br>"
-                f"<b>Líneas:</b> {lines:,}"
+                f"<b>Estadísticas:</b><br>"
+                f"- {total_chars:,} caracteres<br>"
+                f"- {words:,} palabras<br>"
+                f"- {lines:,} líneas"
+                f"</div>"
             )
             
             # Limpiar reportes previos
@@ -247,9 +294,9 @@ class MainWindow(QMainWindow):
                 decompressed_path=dec_path
             )
 
-            # Generar reporte textual
-            report = self.generate_report_string(result, orig_path, comp_path, dec_path)
-            self.report_area.setText(report)
+            # Generar reporte HTML
+            report_html = self.generate_report_html(result, orig_path, comp_path, dec_path)
+            self.report_area.setHtml(report_html)
 
             # Agregar a la tabla de resultados
             self.add_to_table(result)
@@ -281,9 +328,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Descomprimiendo desde {comp_path}...")
             QApplication.processEvents()
 
-            # El método measure_algorithm ya corrió la descompresión y guardó en dec_path,
-            # pero simulamos la lectura física del archivo y validación por separado
-            # para demostrar que funciona independientemente.
             from core.file_manager import load_compressed_file, save_text_file
             from core.validator import comparar_archivos_byte_a_byte
             
@@ -351,36 +395,32 @@ class MainWindow(QMainWindow):
                 decompressed_path=l_dec
             )
 
-            # Generar reportes combinados
-            h_report = self.generate_report_string(h_result, h_orig, h_comp, h_dec)
-            l_report = self.generate_report_string(l_result, l_orig, l_comp, l_dec)
+            # Generar reportes HTML combinados
+            h_report_html = self.generate_report_html(h_result, h_orig, h_comp, h_dec)
+            l_report_html = self.generate_report_html(l_result, l_orig, l_comp, l_dec)
 
-            comparison_text = (
-                "============================================================\n"
-                "           COMPARATIVA DIRECTA: HUFFMAN VS LZW\n"
-                "============================================================\n\n"
-                f"{h_report}\n\n"
-                "------------------------------------------------------------\n\n"
-                f"{l_report}\n\n"
-                "============================================================\n"
-                "CONCLUSIÓN AUTOMÁTICA\n"
-                "============================================================\n"
-            )
-
-            # Agregar conclusión
             best_reduction = max([h_result, l_result], key=lambda item: item["reduction_percentage"])
             fastest = min([h_result, l_result], key=lambda item: item["total_time_seconds"])
 
-            comparison_text += (
-                f"- Mejor reducción de espacio: {best_reduction['algorithm']} "
-                f"({best_reduction['reduction_percentage']:.2f}% de ahorro)\n"
-                f"- Mayor velocidad de procesamiento: {fastest['algorithm']} "
-                f"({fastest['total_time_seconds']:.6f} segundos totales)\n"
+            comparison_html = (
+                f"<div style=\"font-family: 'Segoe UI', sans-serif; color: #f4f4f5;\">"
+                f"<h2 style=\"color: #a855f7; border-bottom: 2px solid #27272a; padding-bottom: 8px; margin-top: 0; text-align: center;\">"
+                f"COMPARATIVA DIRECTA: HUFFMAN VS LZW</h2>"
+                f"<div style=\"margin-top: 15px;\">{h_report_html}</div>"
+                f"<div style=\"margin-top: 25px; border-top: 1px dashed #27272a; padding-top: 20px;\">{l_report_html}</div>"
+                f"<div style=\"background-color: #1a1a2e; border: 1px solid #4c1d95; border-radius: 8px; padding: 16px; margin-top: 20px;\">"
+                f"<h3 style=\"color: #a78bfa; margin-top: 0; margin-bottom: 8px; font-size: 13px; text-transform: uppercase;\">Conclusión Automática</h3>"
+                f"<ul style=\"margin: 0; padding-left: 20px; color: #e4e4e7; font-size: 12px; line-height: 1.6;\">"
+                f"<li style=\"margin-bottom: 6px;\">"
+                f"<strong>Mejor reducción de espacio:</strong> <span style=\"color: #10b981; font-weight: bold;\">{best_reduction['algorithm']}</span> "
+                f"({best_reduction['reduction_percentage']:.2f}% de ahorro)</li>"
+                f"<li><strong>Mayor velocidad de procesamiento:</strong> <span style=\"color: #38bdf8; font-weight: bold;\">{fastest['algorithm']}</span> "
+                f"({fastest['total_time_seconds']:.6f} segundos totales)</li>"
+                f"</ul></div></div>"
             )
+            self.report_area.setHtml(comparison_html)
 
-            self.report_area.setText(comparison_text)
-
-            # Actualizar tabla
+            # Actualizar tabla comparativa
             self.results_table.setRowCount(0)
             self.add_to_table(h_result)
             self.add_to_table(l_result)
@@ -406,13 +446,16 @@ class MainWindow(QMainWindow):
             self.results_table.setRowCount(0)
             self.report_area.clear()
             
-            self.report_area.append("============================================================\n")
-            self.report_area.append("          BENCHMARK EXPERIMENTAL COMPLETADO\n")
-            self.report_area.append("============================================================\n\n")
-            self.report_area.append(f"Resultados guardados en: experiments/results/results.csv\n\n")
-            
-            # Agrupar y formatear los resultados
-            self.report_area.append(df.to_string(index=False))
+            # Formatear la tabla del benchmark en un pre bonito
+            benchmark_html = (
+                f"<div style=\"font-family: 'Segoe UI', sans-serif; color: #f4f4f5;\">"
+                f"<h2 style=\"color: #a855f7; border-bottom: 2px solid #27272a; padding-bottom: 8px; margin-top: 0;\">"
+                f"BENCHMARK EXPERIMENTAL COMPLETADO</h2>"
+                f"<p style=\"color: #10b981; font-size: 12px; margin-bottom: 12px;\"><strong>Resultados guardados en:</strong> <code>experiments/results/results.csv</code></p>"
+                f"<pre style=\"font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; font-size: 11px; background-color: #0c0a0f; padding: 14px; border: 1px solid #221d2b; border-radius: 8px; color: #e4e4e7; line-height: 1.4;\">{df.to_string(index=False)}</pre>"
+                f"</div>"
+            )
+            self.report_area.setHtml(benchmark_html)
             
             # Rellenar la tabla con los resultados del benchmark
             for _, row in df.iterrows():
@@ -445,7 +488,31 @@ class MainWindow(QMainWindow):
                 self.results_table.setItem(row_idx, 6, QTableWidgetItem(f"{t_dec:.6f} s"))
                 
                 lossless = row.get("lossless", False)
-                self.results_table.setItem(row_idx, 7, QTableWidgetItem("OK" if lossless else "ERROR"))
+                
+                # Crear item de validación coloreado
+                validation_item = QTableWidgetItem("OK" if lossless else "ERROR")
+                if lossless:
+                    validation_item.setForeground(QColor("#10b981"))
+                else:
+                    validation_item.setForeground(QColor("#ef4444"))
+                self.results_table.setItem(row_idx, 7, validation_item)
+                
+                # Estilo a las celdas añadidas
+                for col in range(8):
+                    item = self.results_table.item(row_idx, col)
+                    if item:
+                        # Negrita para la primera columna
+                        if col == 0:
+                            font = item.font()
+                            font.setBold(True)
+                            item.setFont(font)
+                        # Verde para columna ahorro
+                        elif col == 4:
+                            item.setForeground(QColor("#10b981"))
+                            font = item.font()
+                            font.setBold(True)
+                            item.setFont(font)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             self.statusBar().showMessage("Benchmark académico finalizado.")
 
@@ -470,7 +537,7 @@ class MainWindow(QMainWindow):
         return orig_path, comp_path, dec_path
 
     def add_to_table(self, result: dict[str, Any]) -> None:
-        """Agrega un resultado de métricas a la tabla comparativa."""
+        """Agrega un resultado de métricas a la tabla comparativa con formato y color."""
         row_idx = self.results_table.rowCount()
         self.results_table.insertRow(row_idx)
 
@@ -479,13 +546,36 @@ class MainWindow(QMainWindow):
         self.results_table.setItem(row_idx, 1, QTableWidgetItem(f"{result['original_size_bytes']:,} bytes"))
         self.results_table.setItem(row_idx, 2, QTableWidgetItem(f"{result['compressed_size_bytes']:,} bytes"))
         self.results_table.setItem(row_idx, 3, QTableWidgetItem(f"{result['compression_ratio']:.4f}"))
-        self.results_table.setItem(row_idx, 4, QTableWidgetItem(f"{result['reduction_percentage']:.2f}%"))
+        
+        # Columna de reducción con color verde destacado
+        reduction_item = QTableWidgetItem(f"{result['reduction_percentage']:.2f}%")
+        reduction_item.setForeground(QColor("#10b981"))
+        self.results_table.setItem(row_idx, 4, reduction_item)
+        
         self.results_table.setItem(row_idx, 5, QTableWidgetItem(f"{result['compression_time_seconds']:.6f} s"))
         self.results_table.setItem(row_idx, 6, QTableWidgetItem(f"{result['decompression_time_seconds']:.6f} s"))
-        self.results_table.setItem(row_idx, 7, QTableWidgetItem("OK" if result["lossless"] else "ERROR"))
+        
+        # Columna de validación con color según estado
+        validation_item = QTableWidgetItem("OK" if result["lossless"] else "ERROR")
+        if result["lossless"]:
+            validation_item.setForeground(QColor("#10b981"))
+        else:
+            validation_item.setForeground(QColor("#ef4444"))
+        self.results_table.setItem(row_idx, 7, validation_item)
 
-    def generate_report_string(self, result: dict[str, Any], orig_path: str, comp_path: str, dec_path: str) -> str:
-        """Genera el bloque textual del reporte formateado."""
+        # Aplicar formato de alineación y tipografía
+        for col in range(8):
+            item = self.results_table.item(row_idx, col)
+            if item:
+                # Negrita para algoritmo y validación
+                if col in [0, 4, 7]:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def generate_report_html(self, result: dict[str, Any], orig_path: str, comp_path: str, dec_path: str) -> str:
+        """Genera el bloque HTML del reporte formateado."""
         texto = result["decompressed_text"]
         total_caracteres = len(texto)
         caracteres_sin_espacios = len(
@@ -512,7 +602,6 @@ class MainWindow(QMainWindow):
         encoding = result["encoding_used"]
         lossless_str = "OK" if result["lossless"] else "ERROR"
         diff_bytes = dec_bytes - orig_bytes
-        lossless_bool_str = "SÍ" if result["lossless"] else "NO"
         
         ratio = result["compression_ratio"]
         pct_comprimido = result["porcentaje_comprimido"]
@@ -521,46 +610,91 @@ class MainWindow(QMainWindow):
         orig_name = Path(orig_path).name
         orig_ext = Path(orig_path).suffix
 
-        report = (
-            "========================================\n"
-            f"REPORTE DE TEXTZIPLAB - {result['algorithm'].upper()}\n"
-            "========================================\n\n"
-            "ARCHIVO ORIGINAL\n"
-            f"- Ruta: {orig_path}\n"
-            f"- Nombre: {orig_name}\n"
-            f"- Extensión: {orig_ext}\n"
-            f"- Tamaño real: {orig_bytes:,} bytes\n"
-            f"- Tamaño real: {orig_bits:,} bits\n\n"
-            "TEXTO LEÍDO\n"
-            f"- Codificación usada: {encoding}\n"
-            f"- Caracteres totales: {total_caracteres:,}\n"
-            f"- Caracteres sin espacios ni saltos de línea: {caracteres_sin_espacios:,}\n"
-            f"- Palabras: {palabras:,}\n"
-            f"- Líneas: {lineas:,}\n"
-            f"- Tamaño lógico del texto leído: {logical_bytes:,} bytes\n"
-            f"- Tamaño lógico del texto leído: {logical_bits:,} bits\n\n"
-            "ARCHIVO COMPRIMIDO\n"
-            f"- Ruta: {comp_path}\n"
-            f"- Tamaño real: {comp_bytes:,} bytes\n"
-            f"- Tamaño real: {comp_bits:,} bits\n\n"
-            "ARCHIVO DESCOMPRIMIDO\n"
-            f"- Ruta: {dec_path}\n"
-            f"- Tamaño real: {dec_bytes:,} bytes\n"
-            f"- Tamaño real: {dec_bits:,} bits\n\n"
-            "VALIDACIÓN\n"
-            f"- Original vs descomprimido byte a byte: {lossless_str}\n"
-            f"- Diferencia de bytes: {diff_bytes:,}\n"
-            f"- ¿Compresión sin pérdida?: {lossless_bool_str}\n\n"
-            "RESULTADOS DE COMPRESIÓN\n"
-            f"- Ratio de compresión: {ratio:.4f}\n"
-            f"- Porcentaje comprimido respecto al original: {pct_comprimido:.2f}%\n"
-            f"- Ahorro de espacio: {ahorro:.2f}%\n\n"
-            "OBSERVACIÓN\n"
-            "- El tamaño lógico del texto puede diferir del tamaño físico del archivo por codificación, saltos de línea o caracteres especiales.\n"
-            "- La métrica principal de compresión compara el tamaño físico del archivo original contra el tamaño físico del archivo comprimido.\n"
-            "========================================"
+        # Colores dinámicos
+        lossless_color = "#10b981" if result["lossless"] else "#ef4444"
+        lossless_bg = "#064e3b" if result["lossless"] else "#7f1d1d"
+        lossless_border = "#047857" if result["lossless"] else "#b91c1c"
+        
+        lossless_badge = (
+            f"<span style=\"color: {lossless_color}; background-color: {lossless_bg}; "
+            f"border: 1px solid {lossless_border}; border-radius: 4px; padding: 2px 8px; "
+            f"font-weight: bold; font-size: 11px;\">{lossless_str}</span>"
         )
-        return report
+
+        html = f"""
+        <div style="font-family: 'Segoe UI', sans-serif; color: #f4f4f5; margin-bottom: 10px;">
+            <h3 style="color: #a78bfa; margin-top: 0; margin-bottom: 12px; border-bottom: 1px solid #27272a; padding-bottom: 6px; text-transform: uppercase; font-size: 13px; letter-spacing: 0.5px;">
+                REPORTE DE TEXTZIPLAB - <span style="color: #6366f1;">{result['algorithm'].upper()}</span>
+            </h3>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12px;">
+                <tr style="background-color: #1f1f2e;">
+                    <td colspan="2" style="font-weight: bold; color: #a78bfa; padding: 6px 8px; border-radius: 4px;">ARCHIVO ORIGINAL</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa; width: 40%;">Nombre del archivo:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7; font-weight: bold;">{orig_name} <span style="color: #71717a; font-size: 11px; font-weight: normal;">({orig_ext})</span></td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Tamaño físico original:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7; font-family: monospace;">{orig_bytes:,} bytes ({orig_bits:,} bits)</td>
+                </tr>
+                
+                <tr style="background-color: #1f1f2e;">
+                    <td colspan="2" style="font-weight: bold; color: #a78bfa; padding: 6px 8px; border-radius: 4px;">TEXTO LEÍDO</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Codificación / Caracteres:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7;">{encoding} / {total_caracteres:,} caracteres</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Palabras / Líneas:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7;">{palabras:,} palabras / {lineas:,} líneas</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Tamaño lógico leído:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7; font-family: monospace;">{logical_bytes:,} bytes ({logical_bits:,} bits)</td>
+                </tr>
+
+                <tr style="background-color: #1f1f2e;">
+                    <td colspan="2" style="font-weight: bold; color: #a78bfa; padding: 6px 8px; border-radius: 4px;">ARCHIVO COMPRIMIDO</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Ruta de salida:</td>
+                    <td style="padding: 5px 8px; color: #a1a1aa; font-size: 11px; font-family: monospace;">{comp_path}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Tamaño físico comprimido:</td>
+                    <td style="padding: 5px 8px; color: #10b981; font-weight: bold; font-family: monospace;">{comp_bytes:,} bytes ({comp_bits:,} bits)</td>
+                </tr>
+
+                <tr style="background-color: #1f1f2e;">
+                    <td colspan="2" style="font-weight: bold; color: #a78bfa; padding: 6px 8px; border-radius: 4px;">VALIDACIÓN E INTEGRIDAD</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Original vs Descomprimido:</td>
+                    <td style="padding: 5px 8px;">{lossless_badge}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Diferencia de bytes:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7; font-family: monospace;">{diff_bytes:,} bytes</td>
+                </tr>
+
+                <tr style="background-color: #1f1f2e;">
+                    <td colspan="2" style="font-weight: bold; color: #a78bfa; padding: 6px 8px; border-radius: 4px;">RESULTADOS DE COMPRESIÓN</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Ratio de compresión:</td>
+                    <td style="padding: 5px 8px; color: #e4e4e7; font-family: monospace;">{ratio:.4f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 8px; color: #a1a1aa;">Porcentaje / Ahorro:</td>
+                    <td style="padding: 5px 8px; color: #10b981; font-weight: bold;">{pct_comprimido:.2f}% (Ahorro del {ahorro:.2f}%)</td>
+                </tr>
+            </table>
+        </div>
+        """
+        return html
 
 
 def run_gui() -> None:
