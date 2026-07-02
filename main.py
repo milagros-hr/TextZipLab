@@ -12,6 +12,10 @@ from core.file_manager import (
     get_file_size_bytes,
     leer_texto_con_encoding,
     save_text_file,
+    save_compressed_file,
+    load_compressed_file,
+    preview_compressed_data,
+    validate_compressed_data,
 )
 from core.huffman import HuffmanCompressor
 from core.lzw import LZWCompressor
@@ -98,6 +102,13 @@ def print_reporte_completo(result: dict, orig_path: str, comp_path: str, dec_pat
     diff_bytes = dec_bytes - orig_bytes
     lossless_bool_str = "SÍ" if result["lossless"] else "NO"
     
+    # Métricas lógicas
+    logical_comp_bits = result.get("logical_compressed_size_bits", 0)
+    logical_comp_bytes = result.get("logical_compressed_size_bytes", 0)
+    logical_ratio = result.get("logical_compression_ratio", 0.0)
+    logical_ahorro = result.get("logical_reduction_percentage", 0.0)
+    
+    # Métricas físicas
     ratio = result["compression_ratio"]
     pct_comprimido = result["porcentaje_comprimido"]
     ahorro = result["reduction_percentage"]
@@ -113,8 +124,7 @@ def print_reporte_completo(result: dict, orig_path: str, comp_path: str, dec_pat
     print(f"- Ruta: {orig_path}")
     print(f"- Nombre: {orig_name}")
     print(f"- Extensión: {orig_ext}")
-    print(f"- Tamaño real: {format_bytes(orig_bytes)} bytes")
-    print(f"- Tamaño real: {format_bits(orig_bits)} bits")
+    print(f"- Tamaño físico real: {format_bytes(orig_bytes)} bytes ({format_bits(orig_bits)} bits)")
     print("")
     print("TEXTO LEÍDO")
     print(f"- Codificación usada: {encoding}")
@@ -122,18 +132,18 @@ def print_reporte_completo(result: dict, orig_path: str, comp_path: str, dec_pat
     print(f"- Caracteres sin espacios ni saltos de línea: {caracteres_sin_espacios:,}")
     print(f"- Palabras: {palabras:,}")
     print(f"- Líneas: {lineas:,}")
-    print(f"- Tamaño lógico del texto leído: {format_bytes(logical_bytes)} bytes")
-    print(f"- Tamaño lógico del texto leído: {format_bits(logical_bits)} bits")
+    print(f"- Tamaño lógico del texto leído: {format_bytes(logical_bytes)} bytes ({format_bits(logical_bits)} bits)")
     print("")
-    print("ARCHIVO COMPRIMIDO")
+    print("ARCHIVO COMPRIMIDO GUARDADO (FÍSICO EN DISCO)")
     print(f"- Ruta: {comp_path}")
-    print(f"- Tamaño real: {format_bytes(comp_bytes)} bytes")
-    print(f"- Tamaño real: {format_bits(comp_bits)} bits")
+    print(f"- Tamaño físico real en disco: {format_bytes(comp_bytes)} bytes ({format_bits(comp_bits)} bits)")
+    print("")
+    print("COMPRESIÓN LÓGICA (TEÓRICA - BITSTREAM)")
+    print(f"- Tamaño lógico comprimido: {format_bytes(logical_comp_bytes)} bytes ({format_bits(logical_comp_bits)} bits)")
     print("")
     print("ARCHIVO DESCOMPRIMIDO")
     print(f"- Ruta: {dec_path}")
-    print(f"- Tamaño real: {format_bytes(dec_bytes)} bytes")
-    print(f"- Tamaño real: {format_bits(dec_bits)} bits")
+    print(f"- Tamaño real: {format_bytes(dec_bytes)} bytes ({format_bits(dec_bits)} bits)")
     print("")
     print("VALIDACIÓN")
     print(f"- Original vs descomprimido byte a byte: {lossless_str}")
@@ -141,9 +151,13 @@ def print_reporte_completo(result: dict, orig_path: str, comp_path: str, dec_pat
     print(f"- ¿Compresión sin pérdida?: {lossless_bool_str}")
     print("")
     print("RESULTADOS DE COMPRESIÓN")
-    print(f"- Ratio de compresión: {ratio:.4f}")
-    print(f"- Porcentaje comprimido respecto al original: {pct_comprimido:.2f}%")
-    print(f"- Ahorro de espacio: {ahorro:.2f}%")
+    print("  [Métricas Lógicas / Teóricas]:")
+    print(f"  - Ratio lógico: {logical_ratio:.4f}")
+    print(f"  - Ahorro lógico: {logical_ahorro:.2f}%")
+    print("  [Métricas Físicas / En disco real]:")
+    print(f"  - Ratio físico: {ratio:.4f}")
+    print(f"  - Porcentaje comprimido: {pct_comprimido:.2f}%")
+    print(f"  - Ahorro físico real: {ahorro:.2f}%")
     print("")
     print("OBSERVACIÓN")
     print("- El tamaño lógico del texto puede diferir del tamaño físico del archivo por codificación, saltos de línea o caracteres especiales.")
@@ -186,6 +200,8 @@ def run_cli() -> None:
     current_file_path: str | None = None
     current_encoding: str = "utf-8"
     last_results: list[dict] = []
+    loaded_compressed_data: dict | None = None
+    loaded_compressed_path: str | None = None
 
     while True:
         print("\n=== TextZipLab - Consola ===")
@@ -196,7 +212,12 @@ def run_cli() -> None:
         print("5. Comparar Huffman vs LZW")
         print("6. Ejecutar benchmark experimental")
         print("7. Exportar resultados")
-        print("8. Salir")
+        print("8. Guardar comprimido real (.huff / .lzw)")
+        print("9. Cargar comprimido real o JSON")
+        print("10. Descomprimir comprimido")
+        print("11. Exportar vista académica JSON (.json)")
+        print("12. Comparar peso original vs comprimido guardado")
+        print("13. Salir")
 
         option = input("Seleccione una opción: ").strip()
 
@@ -308,6 +329,198 @@ def run_cli() -> None:
                 export_last_results(last_results)
 
             elif option == "8":
+                if not last_results:
+                    print("Primero realice una compresión (opciones 3, 4 o 5).")
+                    continue
+                compressed_data = last_results[-1]["compressed_data"]
+                algo = compressed_data.get("algorithm")
+                
+                # Inyectar extensión y codificación original
+                orig_file = current_file_path if current_file_path else "temp_run/manual_input.txt"
+                compressed_data["original_extension"] = Path(orig_file).suffix
+                compressed_data["original_encoding"] = current_encoding
+                
+                ext = ".huff" if algo == "Huffman" else ".lzw"
+                if current_file_path:
+                    default_path = current_file_path + ext
+                else:
+                    default_path = "temp_run/manual_input" + ext
+                
+                path = input(f"Ruta de destino [{default_path}]: ").strip().strip('"')
+                if not path:
+                    path = default_path
+                
+                save_compressed_file(path, compressed_data)
+                file_size_bytes = get_file_size_bytes(path)
+                print(f"\nArchivo comprimido REAL guardado correctamente en: {path}")
+                print(f"Tamaño físico real del archivo guardado: {format_bytes(file_size_bytes)} bytes ({format_bits(file_size_bytes * 8)} bits)")
+
+            elif option == "9":
+                path = input("Ruta del archivo comprimido (.huff / .lzw / .json): ").strip().strip('"')
+                try:
+                    loaded_compressed_data = load_compressed_file(path)
+                    loaded_compressed_path = path
+                    print(f"\nArchivo cargado correctamente: {path}")
+                    print(f"Algoritmo detectado: {loaded_compressed_data.get('algorithm')}")
+                    print(f"Extensión original recuperada de cabecera: {loaded_compressed_data.get('original_extension', '.txt')}")
+                    print(f"Codificación original recuperada de cabecera: {loaded_compressed_data.get('original_encoding', 'utf-8')}")
+                except Exception as error:
+                    print(f"\nError al cargar el archivo: {error}")
+
+            elif option == "10":
+                if loaded_compressed_data is None:
+                    print("Primero cargue un archivo comprimido (opción 9).")
+                    continue
+                algo = loaded_compressed_data.get("algorithm")
+                try:
+                    if algo == "Huffman":
+                        compressor = HuffmanCompressor()
+                    elif algo == "LZW":
+                        compressor = LZWCompressor()
+                    else:
+                        raise ValueError(f"Algoritmo desconocido: {algo}")
+                    
+                    decompressed_text = compressor.decompress(loaded_compressed_data)
+                    print(f"\nDescompresión exitosa utilizando {algo}.")
+                    
+                    # Calcular tamaño del texto recuperado
+                    orig_enc = loaded_compressed_data.get("original_encoding")
+                    if orig_enc is None:
+                        orig_enc = "utf-8"
+                    
+                    rec_bytes = len(decompressed_text.encode(orig_enc))
+                    rec_bits = rec_bytes * 8
+                    
+                    print(f"Ruta del archivo comprimido cargado: {loaded_compressed_path}")
+                    comp_physical_bytes = get_file_size_bytes(loaded_compressed_path) if loaded_compressed_path else 0
+                    print(f"Tamaño físico del comprimido en disco: {format_bytes(comp_physical_bytes)} bytes ({format_bits(comp_physical_bytes * 8)} bits)")
+                    print(f"Tamaño del texto recuperado: {format_bytes(rec_bytes)} bytes ({format_bits(rec_bits)} bits)")
+                    print(f"Cantidad de caracteres recuperados: {len(decompressed_text):,}")
+                    
+                    # Vista previa ampliada de hasta 5,000 caracteres
+                    lim = 5000
+                    preview_text = decompressed_text[:lim]
+                    print(f"\n=== VISTA PREVIA DEL CONTENIDO RECUPERADO ({'PARCIAL' if len(decompressed_text) > lim else 'COMPLETO'}) ===")
+                    print(preview_text)
+                    if len(decompressed_text) > lim:
+                        print(f"... [Mostrando primeros 5,000 caracteres de {len(decompressed_text):,} totales] ...")
+                    print("=====================================================================")
+                    
+                    save_opt = input("¿Desea guardar el texto recuperado en un archivo? (s/N): ").strip().lower()
+                    if save_opt == "s":
+                        orig_ext = loaded_compressed_data.get("original_extension")
+                        if orig_ext is None:
+                            orig_ext = ".txt"
+                        orig_name = loaded_compressed_data.get("original_name")
+                        if orig_name:
+                            orig_name_stem = Path(orig_name).stem
+                            default_rec = f"temp_run/{orig_name_stem}_recuperado{orig_ext}"
+                        else:
+                            default_rec = f"temp_run/archivo_recuperado{orig_ext}"
+                        
+                        save_path = input(f"Ruta de destino [{default_rec}]: ").strip().strip('"')
+                        if not save_path:
+                            save_path = default_rec
+                        save_text_file(save_path, decompressed_text, encoding=orig_enc)
+                        print(f"Texto recuperado guardado en: {save_path} con codificación {orig_enc}")
+                except Exception as error:
+                    print(f"\nError al descomprimir: {error}")
+
+            elif option == "11":
+                if not last_results:
+                    print("Primero realice una compresión (opciones 3, 4 o 5).")
+                    continue
+                compressed_data = last_results[-1]["compressed_data"]
+                algo = compressed_data.get("algorithm")
+                
+                # Inyectar extensión y codificación original
+                orig_file = current_file_path if current_file_path else "temp_run/manual_input.txt"
+                compressed_data["original_extension"] = Path(orig_file).suffix
+                compressed_data["original_encoding"] = current_encoding
+                compressed_data["original_name"] = Path(orig_file).name
+                compressed_data["original_size_bytes"] = get_file_size_bytes(orig_file)
+                
+                ext = ".huff.json" if algo == "Huffman" else ".lzw.json"
+                if current_file_path:
+                    default_path = current_file_path + ext
+                else:
+                    default_path = "temp_run/manual_input" + ext
+                
+                path = input(f"Ruta de destino [{default_path}]: ").strip().strip('"')
+                if not path:
+                    path = default_path
+                
+                save_compressed_file(path, compressed_data)
+                file_size_bytes = get_file_size_bytes(path)
+                print(f"\nVista académica JSON exportada correctamente en: {path}")
+                print(f"Tamaño físico del JSON: {format_bytes(file_size_bytes)} bytes")
+                print("* Aclaración Académica: El archivo JSON contiene metadatos estructurados legibles, por lo que pesa más que el bitstream comprimido real.")
+
+            elif option == "12":
+                if loaded_compressed_data is None:
+                    print("Primero cargue un archivo comprimido (opción 9).")
+                    continue
+                if loaded_compressed_path is None:
+                    print("No se encuentra la ruta del archivo comprimido.")
+                    continue
+                
+                orig_bytes = loaded_compressed_data.get("original_size_bytes")
+                comp_bits_theoretical = loaded_compressed_data.get("compressed_size_bits")
+                
+                json_bytes = get_file_size_bytes(loaded_compressed_path)
+                json_bits = json_bytes * 8
+                
+                is_json = loaded_compressed_path.lower().endswith(".json")
+                
+                print("\n=== COMPARATIVA DE PESOS ===")
+                
+                if orig_bytes is not None:
+                    orig_bits = orig_bytes * 8
+                    print(f"ARCHIVO ORIGINAL:")
+                    print(f"- Tamaño físico original: {format_bytes(orig_bytes)} bytes ({format_bits(orig_bits)} bits)")
+                else:
+                    print(f"ARCHIVO ORIGINAL:")
+                    print(f"- Tamaño físico original: No disponible (archivo heredado sin metadatos)")
+                    
+                if comp_bits_theoretical is not None:
+                    comp_bytes_theoretical = (comp_bits_theoretical + 7) // 8
+                    print(f"COMPRESIÓN LÓGICA (Teórica / Bitstream del algoritmo):")
+                    print(f"- Tamaño lógico/teórico: {format_bytes(comp_bytes_theoretical)} bytes ({format_bits(comp_bits_theoretical)} bits)")
+                    if orig_bytes is not None and orig_bytes > 0:
+                        ratio_theoretical = comp_bits_theoretical / (orig_bytes * 8)
+                        pct_theoretical = (1.0 - ratio_theoretical) * 100
+                        print(f"- Ratio teórico: {ratio_theoretical:.4f}")
+                        print(f"- Ahorro teórico de espacio: {pct_theoretical:.2f}%")
+                    else:
+                        print(f"- Ratio teórico: No disponible")
+                        print(f"- Ahorro teórico de espacio: No disponible")
+                else:
+                    print(f"COMPRESIÓN LÓGICA (Teórica / Bitstream del algoritmo):")
+                    print(f"- Tamaño lógico/teórico: No disponible")
+                    print(f"- Ratio teórico: No disponible")
+                    print(f"- Ahorro teórico de espacio: No disponible")
+                
+                if is_json:
+                    print(f"ARCHIVO COMPRIMIDO GUARDADO EN DISCO (JSON académico):")
+                else:
+                    print(f"ARCHIVO COMPRIMIDO GUARDADO EN DISCO (Binario Real):")
+                print(f"- Tamaño físico real en disco: {format_bytes(json_bytes)} bytes ({format_bits(json_bits)} bits)")
+                
+                if orig_bytes is not None and orig_bytes > 0:
+                    ratio_json = json_bytes / orig_bytes
+                    pct_json = (1.0 - ratio_json) * 100
+                    print(f"- Ratio real: {ratio_json:.4f}")
+                    print(f"- Ahorro real de espacio: {pct_json:.2f}%")
+                else:
+                    print(f"- Ratio real: No disponible")
+                    print(f"- Ahorro real de espacio: No disponible")
+                
+                if is_json:
+                    print("\n* Aclaración Académica: El archivo JSON físico guardado en disco pesa más que el tamaño comprimido lógico/teórico del algoritmo. Esto ocurre porque el archivo JSON es en formato de texto plano y contiene metadatos legibles (como el diccionario de frecuencias de caracteres o alfabeto de entrada) necesarios para que la descompresión posterior sea posible de forma autónoma.")
+                else:
+                    print("\n* Nota: El archivo binario guardado en disco tiene un tamaño muy similar al bitstream teórico debido a que las cabeceras personalizadas de metadatos ('TZHUF1' o 'TZLZW1') tienen un peso mínimo en disco.")
+
+            elif option == "13":
                 print("Saliendo de TextZipLab.")
                 break
 

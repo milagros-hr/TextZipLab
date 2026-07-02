@@ -32,6 +32,10 @@ from core.file_manager import (
     get_file_size_bytes,
     leer_texto_con_encoding,
     save_text_file,
+    save_compressed_file,
+    load_compressed_file,
+    preview_compressed_data,
+    validate_compressed_data,
 )
 from core.huffman import HuffmanCompressor
 from core.lzw import LZWCompressor
@@ -50,6 +54,9 @@ class MainWindow(QMainWindow):
         self.current_file_path: str | None = None
         self.current_encoding: str = "utf-8"
         self.last_results: list[dict[str, Any]] = []
+        self.loaded_compressed_data: dict[str, Any] | None = None
+        self.loaded_compressed_path: str | None = None
+        self.decompressed_text_recovered: str | None = None
 
         # Cargar estilos
         self.load_stylesheet()
@@ -162,6 +169,43 @@ class MainWindow(QMainWindow):
         ops_layout.addWidget(self.benchmark_button)
 
         left_layout.addWidget(ops_group)
+
+        # Grupo: Archivos Comprimidos
+        persist_group = QGroupBox("Archivos Comprimidos")
+        persist_layout = QVBoxLayout(persist_group)
+        persist_layout.setSpacing(10)
+
+        self.save_bin_button = QPushButton("Guardar comprimido real")
+        self.save_bin_button.clicked.connect(self.save_compressed_bin)
+        self.save_bin_button.setEnabled(False)
+        persist_layout.addWidget(self.save_bin_button)
+
+        self.load_compr_button = QPushButton("Cargar comprimido")
+        self.load_compr_button.clicked.connect(self.load_compressed_file_gui)
+        persist_layout.addWidget(self.load_compr_button)
+
+        self.decompress_compr_button = QPushButton("Descomprimir")
+        self.decompress_compr_button.clicked.connect(self.decompress_loaded_file)
+        self.decompress_compr_button.setEnabled(False)
+        persist_layout.addWidget(self.decompress_compr_button)
+
+        self.view_recovered_full_button = QPushButton("Ver texto completo")
+        self.view_recovered_full_button.clicked.connect(self.show_full_recovered_text_dialog)
+        self.view_recovered_full_button.setEnabled(False)
+        persist_layout.addWidget(self.view_recovered_full_button)
+
+        self.save_recovered_button = QPushButton("Guardar recuperado")
+        self.save_recovered_button.clicked.connect(self.save_recovered_text)
+        self.save_recovered_button.setEnabled(False)
+        persist_layout.addWidget(self.save_recovered_button)
+
+        self.export_json_button = QPushButton("Exportar vista académica JSON")
+        self.export_json_button.setObjectName("compare_button")
+        self.export_json_button.clicked.connect(self.export_academic_json)
+        self.export_json_button.setEnabled(False)
+        persist_layout.addWidget(self.export_json_button)
+
+        left_layout.addWidget(persist_group)
         left_layout.addStretch()
 
         left_panel.setFixedWidth(300)
@@ -302,8 +346,10 @@ class MainWindow(QMainWindow):
             self.add_to_table(result)
             self.last_results.append(result)
 
-            # Habilitar descompresión
+            # Habilitar descompresión y persistencia
             self.decompress_button.setEnabled(True)
+            self.save_bin_button.setEnabled(True)
+            self.export_json_button.setEnabled(True)
             self.statusBar().showMessage(f"Compresión con {algo} completada.")
 
         except Exception as e:
@@ -427,6 +473,8 @@ class MainWindow(QMainWindow):
 
             self.last_results = [h_result, l_result]
             self.decompress_button.setEnabled(True)
+            self.save_bin_button.setEnabled(True)
+            self.export_json_button.setEnabled(True)
             self.statusBar().showMessage("Comparación finalizada.")
 
         except Exception as e:
@@ -695,6 +743,373 @@ class MainWindow(QMainWindow):
         </div>
         """
         return html
+
+    def save_compressed_bin(self) -> None:
+        """Guarda la última compresión de la sesión en un archivo binario real (.huff / .lzw)."""
+        if not self.last_results:
+            QMessageBox.warning(self, "Sin datos", "No hay ninguna compresión en memoria para guardar.")
+            return
+
+        last_res = self.last_results[-1]
+        compressed_data = last_res.get("compressed_data")
+        if not compressed_data:
+            QMessageBox.warning(self, "Sin datos", "No se encontraron los datos comprimidos.")
+            return
+
+        algo = compressed_data.get("algorithm", "Compressed")
+        ext = ".huff" if algo == "Huffman" else ".lzw"
+        filter_str = f"Archivo Comprimido {algo} (*{ext})"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Guardar archivo comprimido REAL", f"resultado{ext}", filter_str
+        )
+        if not file_path:
+            return
+
+        try:
+            if not file_path.lower().endswith(ext):
+                file_path += ext
+
+            # Inyectar metadatos de extensión, codificación y nombre original en la cabecera
+            orig_path = self.current_file_path if self.current_file_path else "temp_run/manual_input.txt"
+            compressed_data["original_extension"] = Path(orig_path).suffix
+            compressed_data["original_encoding"] = self.current_encoding if hasattr(self, 'current_encoding') else "utf-8"
+            compressed_data["original_name"] = Path(orig_path).name
+            compressed_data["original_size_bytes"] = get_file_size_bytes(orig_path) if self.current_file_path else len(self.current_text.encode(compressed_data["original_encoding"]))
+
+            save_compressed_file(file_path, compressed_data)
+            size = get_file_size_bytes(file_path)
+            
+            QMessageBox.information(
+                self, "Guardado Exitoso",
+                f"El archivo binario comprimido se guardó correctamente en:\n{file_path}\n\n"
+                f"Tamaño físico real: {size:,} bytes."
+            )
+            self.statusBar().showMessage(f"Comprimido real guardado: {Path(file_path).name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Guardar", f"No se pudo guardar el archivo:\n{e}")
+
+    def export_academic_json(self) -> None:
+        """Exporta la compresión en formato JSON legible para análisis académico."""
+        if not self.last_results:
+            QMessageBox.warning(self, "Sin datos", "No hay ninguna compresión en memoria para exportar.")
+            return
+
+        last_res = self.last_results[-1]
+        compressed_data = last_res.get("compressed_data")
+        if not compressed_data:
+            QMessageBox.warning(self, "Sin datos", "No se encontraron los datos comprimidos.")
+            return
+
+        algo = compressed_data.get("algorithm", "Compressed")
+        ext = ".huff.json" if algo == "Huffman" else ".lzw.json"
+        filter_str = f"Vista Académica JSON (*{ext})"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar vista académica JSON", f"resultado{ext}", filter_str
+        )
+        if not file_path:
+            return
+
+        try:
+            if not file_path.lower().endswith(ext):
+                file_path += ext
+
+            orig_path = self.current_file_path if self.current_file_path else "temp_run/manual_input.txt"
+            compressed_data["original_extension"] = Path(orig_path).suffix
+            compressed_data["original_encoding"] = self.current_encoding if hasattr(self, 'current_encoding') else "utf-8"
+            compressed_data["original_name"] = Path(orig_path).name
+            compressed_data["original_size_bytes"] = get_file_size_bytes(orig_path) if self.current_file_path else len(self.current_text.encode(compressed_data["original_encoding"]))
+
+            save_compressed_file(file_path, compressed_data)
+            size = get_file_size_bytes(file_path)
+            
+            QMessageBox.information(
+                self, "Exportado Exitoso",
+                f"La vista académica JSON se exportó correctamente en:\n{file_path}\n\n"
+                f"Tamaño físico del JSON: {size:,} bytes.\n\n"
+                f"Nota: Este archivo es legible por humanos y contiene metadatos en texto claro, "
+                f"por lo que pesa más que el archivo comprimido real."
+            )
+            self.statusBar().showMessage(f"Vista académica JSON exportada: {Path(file_path).name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Exportar", f"No se pudo guardar el archivo:\n{e}")
+
+    def load_compressed_file_gui(self) -> None:
+        """Carga y valida un archivo comprimido binario o JSON."""
+        allowed_filters = "Archivos Comprimidos (*.huff *.lzw *.huff.json *.lzw.json);;Todos los archivos (*.*)"
+        file_path, _ = QFileDialog.getOpenFileName(self, "Cargar archivo comprimido", "", allowed_filters)
+        
+        if not file_path:
+            return
+
+        try:
+            loaded_data = load_compressed_file(file_path)
+            self.loaded_compressed_data = loaded_data
+            self.loaded_compressed_path = file_path
+            
+            # Limpiar estado recuperado previo
+            self.decompressed_text_recovered = None
+            self.save_recovered_button.setEnabled(False)
+            self.view_recovered_full_button.setEnabled(False)
+            
+            # Habilitar botones correspondientes
+            self.decompress_compr_button.setEnabled(True)
+            
+            name = Path(file_path).name
+            algo = loaded_data.get("algorithm")
+            
+            # Control de compatibilidad
+            orig_name = loaded_data.get("original_name")
+            orig_ext = loaded_data.get("original_extension")
+            orig_enc = loaded_data.get("original_encoding")
+            
+            name_str = orig_name if orig_name is not None else "No disponible"
+            ext_str = orig_ext if orig_ext is not None else "No disponible"
+            enc_str = orig_enc if orig_enc is not None else "No disponible"
+            
+            self.statusBar().showMessage(f"Archivo cargado: {name} ({algo})")
+            
+            self.report_area.setHtml(
+                f"<div style=\"font-family: 'Segoe UI', sans-serif; color: #f4f4f5;\">"
+                f"<h3 style=\"color: #10b981; margin-top: 0;\">¡Archivo Comprimido Cargado con Éxito!</h3>"
+                f"<b>Ruta de archivo comprimido:</b> <code>{file_path}</code><br>"
+                f"<b>Algoritmo:</b> <span style=\"color: #a78bfa; font-weight: bold;\">{algo}</span><br>"
+                f"<b>Nombre original en cabecera:</b> <code>{name_str}</code><br>"
+                f"<b>Extensión original en cabecera:</b> <code>{ext_str}</code><br>"
+                f"<b>Codificación en cabecera:</b> <code>{enc_str}</code><br><br>"
+                f"<i>Presione 'Descomprimir' para recuperar el texto original y comparar sus métricas físicas y lógicas.</i>"
+                f"</div>"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Cargar", f"No se pudo cargar el archivo:\n{e}")
+            self.statusBar().showMessage("Error al cargar archivo.")
+
+    def decompress_loaded_file(self) -> None:
+        """Descomprime los datos cargados desde el archivo comprimido (binario o JSON)."""
+        if not self.loaded_compressed_data:
+            QMessageBox.warning(self, "Sin datos", "No hay ningún archivo comprimido cargado.")
+            return
+
+        algo = self.loaded_compressed_data.get("algorithm")
+        self.statusBar().showMessage(f"Descomprimiendo con {algo}...")
+        QApplication.processEvents()
+
+        try:
+            if algo == "Huffman":
+                compressor = HuffmanCompressor()
+            elif algo == "LZW":
+                compressor = LZWCompressor()
+            else:
+                raise ValueError(f"Algoritmo desconocido: {algo}")
+
+            decompressed_text = compressor.decompress(self.loaded_compressed_data)
+            self.decompressed_text_recovered = decompressed_text
+            self.save_recovered_button.setEnabled(True)
+            self.view_recovered_full_button.setEnabled(True)
+            
+            # Vista previa del texto recuperado (hasta 5000 caracteres)
+            lim = 5000
+            preview_snippet = decompressed_text[:lim]
+            is_partial = len(decompressed_text) > lim
+            text_badge = f"<span style='color: #f59e0b; font-weight: bold;'>[VISTA PREVIA PARCIAL - Mostrando primeros 5,000 caracteres]</span>" if is_partial else f"<span style='color: #10b981; font-weight: bold;'>[CONTENIDO COMPLETO]</span>"
+            
+            # Reemplazar caracteres HTML especiales en la vista previa
+            preview_snippet_html = (
+                preview_snippet.replace("&", "&amp;")
+                               .replace("<", "&lt;")
+                               .replace(">", "&gt;")
+                               .replace("\n", "<br>")
+            )
+            
+            # Calcular tamaño real del texto recuperado
+            orig_enc = self.loaded_compressed_data.get("original_encoding")
+            if orig_enc is None:
+                orig_enc = "utf-8"
+            
+            rec_bytes = len(decompressed_text.encode(orig_enc))
+            rec_bits = rec_bytes * 8
+            
+            # Cabeceras y metadatos cargados
+            orig_bytes = self.loaded_compressed_data.get("original_size_bytes")
+            comp_bits_theoretical = self.loaded_compressed_data.get("compressed_size_bits")
+            orig_name = self.loaded_compressed_data.get("original_name")
+            orig_ext = self.loaded_compressed_data.get("original_extension")
+            
+            file_bytes_disk = get_file_size_bytes(self.loaded_compressed_path) if self.loaded_compressed_path else 0
+            file_bits_disk = file_bytes_disk * 8
+            
+            is_json = self.loaded_compressed_path.lower().endswith(".json") if self.loaded_compressed_path else False
+            
+            # Formatear filas de metadatos originales
+            if orig_bytes is not None:
+                orig_bits = orig_bytes * 8
+                orig_bytes_str = f"{orig_bytes:,} bytes ({orig_bits:,} bits)"
+            else:
+                orig_bytes_str = "No disponible"
+                
+            if comp_bits_theoretical is not None:
+                comp_bytes_theoretical = (comp_bits_theoretical + 7) // 8
+                comp_bits_str = f"{comp_bytes_theoretical:,} bytes ({comp_bits_theoretical:,} bits)"
+                if orig_bytes is not None and orig_bytes > 0:
+                    ratio_theoretical = comp_bits_theoretical / (orig_bytes * 8)
+                    pct_theoretical = (1.0 - ratio_theoretical) * 100
+                    theoretical_saving_str = f"{pct_theoretical:.2f}% (Ratio: {ratio_theoretical:.4f})"
+                else:
+                    theoretical_saving_str = "No disponible"
+            else:
+                comp_bits_str = "No disponible"
+                theoretical_saving_str = "No disponible"
+                
+            if orig_bytes is not None and orig_bytes > 0:
+                ratio_disk = file_bytes_disk / orig_bytes
+                pct_disk = (1.0 - ratio_disk) * 100
+                disk_saving_str = f"{pct_disk:.2f}% (Ratio: {ratio_disk:.4f})"
+            else:
+                disk_saving_str = "No disponible"
+                
+            name_sugerido = "archivo_recuperado.txt"
+            if orig_name:
+                orig_name_stem = Path(orig_name).stem
+                ext = orig_ext if orig_ext else ".txt"
+                name_sugerido = f"{orig_name_stem}_recuperado{ext}"
+            elif orig_ext:
+                name_sugerido = f"archivo_recuperado{orig_ext}"
+                
+            academic_note = ""
+            if is_json:
+                academic_note = (
+                    f"<div style='font-size: 11px; color: #71717a; padding: 8px; background-color: #0c0a0f; border-left: 3px solid #f59e0b; border-radius: 4px;'>"
+                    f"<b>Aclaración Académica:</b> El archivo JSON físico guardado en disco pesa más que el tamaño teórico del algoritmo. Esto ocurre porque el JSON es texto plano y contiene metadatos explicativos legibles por humanos (como alfabeto o diccionario) necesarios para la descompresión posterior."
+                    f"</div>"
+                )
+            else:
+                academic_note = (
+                    f"<div style='font-size: 11px; color: #71717a; padding: 8px; background-color: #0c0a0f; border-left: 3px solid #10b981; border-radius: 4px;'>"
+                    f"<b>Nota de Archivo Binario:</b> El archivo binario real guardado en disco tiene un peso físico muy cercano al tamaño teórico del algoritmo. Esto demuestra el beneficio de usar cabeceras estructuradas compactas de metadatos ('TZHUF1' o 'TZLZW1') y empaquetamiento a nivel de bits."
+                    f"</div>"
+                )
+
+            html_report = (
+                f"<div style=\"font-family: 'Segoe UI', sans-serif; color: #f4f4f5;\">"
+                f"<h3 style=\"color: #10b981; border-bottom: 2px solid #27272a; padding-bottom: 5px; margin-top: 0;\">DESCOMPRESIÓN EXITOSA</h3>"
+                f"<p><b>Algoritmo usado:</b> <span style='color: #a78bfa; font-weight: bold;'>{algo}</span></p>"
+                f"<p><b>Archivo comprimido:</b> <code>{Path(self.loaded_compressed_path).name if self.loaded_compressed_path else 'Cargado'}</code></p>"
+                
+                f"<table style=\"width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px;\">"
+                f"<tr style='background-color: #1a1a2e;'><td colspan='2' style='font-weight: bold; color: #a78bfa; padding: 6px 8px;'>MÉTRICAS REALES DE DISCO Y DE SALIDA</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Tamaño Físico del Comprimido:</td><td style='padding: 4px 8px; color: #38bdf8;'>{file_bytes_disk:,} bytes ({file_bits_disk:,} bits)</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Tamaño del Texto Recuperado:</td><td style='padding: 4px 8px; color: #10b981; font-weight: bold;'>{rec_bytes:,} bytes ({rec_bits:,} bits)</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Cantidad de Caracteres:</td><td style='padding: 4px 8px;'>{len(decompressed_text):,} caracteres</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Nombre sugerido de salida:</td><td style='padding: 4px 8px; font-family: monospace; font-size: 11px;'>{name_sugerido}</td></tr>"
+                
+                f"<tr style='background-color: #1a1a2e;'><td colspan='2' style='font-weight: bold; color: #a78bfa; padding: 6px 8px; margin-top: 10px;'>MÉTRICAS HISTÓRICAS DE COMPRESIÓN</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Tamaño Físico Original:</td><td style='padding: 4px 8px;'>{orig_bytes_str}</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Tamaño Comprimido Teórico (Bitstream):</td><td style='padding: 4px 8px;'>{comp_bits_str}</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Ahorro Teórico de Espacio:</td><td style='padding: 4px 8px;'>{theoretical_saving_str}</td></tr>"
+                f"<tr><td style='padding: 4px 8px; color: #a1a1aa;'>Ahorro Real en Disco:</td><td style='padding: 4px 8px;'>{disk_saving_str}</td></tr>"
+                f"</table>"
+                
+                f"<div style='margin-bottom: 8px;'><b>Vista Previa del Contenido Recuperado:</b> {text_badge}</div>"
+                f"<div style='background-color: #111827; border: 1px solid #1f2937; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-family: monospace; font-size: 11px; color: #e4e4e7; max-height: 250px; overflow-y: auto; text-align: left;'>"
+                f"{preview_snippet_html}"
+                f"</div>"
+                f"{academic_note}"
+                f"</div>"
+            )
+            self.report_area.setHtml(html_report)
+            self.statusBar().showMessage("Texto descomprimido correctamente. Listo para visualizar y guardar.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Descomprimir", f"Ocurrió un error en la descompresión:\n{e}")
+            self.statusBar().showMessage("Error al descomprimir archivo.")
+
+    def save_recovered_text(self) -> None:
+        """Guarda el texto recuperado de la descompresión en un archivo."""
+        if self.decompressed_text_recovered is None:
+            QMessageBox.warning(self, "Sin datos", "No hay ningún texto recuperado listo para guardar.")
+            return
+
+        orig_name = self.loaded_compressed_data.get("original_name")
+        orig_ext = self.loaded_compressed_data.get("original_extension")
+        orig_enc = self.loaded_compressed_data.get("original_encoding")
+        
+        if not orig_ext:
+            orig_ext = ".txt"
+        if not orig_enc:
+            orig_enc = "utf-8"
+            
+        name_sugerido = "archivo_recuperado.txt"
+        if orig_name:
+            orig_name_stem = Path(orig_name).stem
+            name_sugerido = f"{orig_name_stem}_recuperado{orig_ext}"
+        elif orig_ext:
+            name_sugerido = f"archivo_recuperado{orig_ext}"
+            
+        allowed_filters = f"Archivos con extensión original (*{orig_ext});;Todos los archivos (*.*)"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Guardar texto recuperado", name_sugerido, allowed_filters)
+        
+        if not file_path:
+            return
+
+        try:
+            save_text_file(file_path, self.decompressed_text_recovered, encoding=orig_enc)
+            QMessageBox.information(
+                self, "Guardado Exitoso",
+                f"El texto recuperado se guardó correctamente en:\n{file_path}\n"
+                f"Codificación: {orig_enc}"
+            )
+            self.statusBar().showMessage(f"Texto recuperado guardado: {Path(file_path).name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Guardar", f"No se pudo guardar el archivo:\n{e}")
+
+    def show_full_recovered_text_dialog(self) -> None:
+        """Abre un diálogo modal para ver la totalidad del texto recuperado."""
+        if self.decompressed_text_recovered is None:
+            QMessageBox.warning(self, "Sin datos", "No hay ningún texto recuperado disponible.")
+            return
+            
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Visor de Texto Recuperado Completo")
+        dialog.resize(800, 600)
+        
+        layout = QVBoxLayout(dialog)
+        
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(self.decompressed_text_recovered)
+        
+        text_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: #09090b;
+                color: #e4e4e7;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 13px;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+        
+        layout.addWidget(text_edit)
+        
+        close_button = QPushButton("Cerrar")
+        close_button.clicked.connect(dialog.accept)
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1f2937;
+                color: #e4e4e7;
+                border: 1px solid #374151;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #374151;
+            }
+        """)
+        layout.addWidget(close_button)
+        
+        dialog.exec()
 
 
 def run_gui() -> None:

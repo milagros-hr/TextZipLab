@@ -75,6 +75,10 @@ def measure_algorithm(
     compression_time = end_compress - start_compress
 
     # Guardar en archivo comprimido
+    compressed["original_extension"] = Path(orig_file).suffix if orig_file else ".txt"
+    compressed["original_encoding"] = encoding_usado
+    compressed["original_name"] = Path(orig_file).name if orig_file else "texto_recuperado"
+    compressed["original_size_bytes"] = original_bytes
     save_compressed_file(comp_file, compressed)
     compressed_bytes = get_file_size_bytes(comp_file)
     compressed_bits = compressed_bytes * 8
@@ -102,7 +106,18 @@ def measure_algorithm(
     # Validación byte a byte
     lossless = comparar_archivos_byte_a_byte(orig_file, dec_file)
 
-    # Fórmulas de compresión sin división entre cero
+    # Métricas lógicas (teóricas)
+    logical_compressed_bits = compressed.get("compressed_size_bits", 0)
+    logical_compressed_bytes = (logical_compressed_bits + 7) // 8
+
+    if original_bits > 0:
+        logical_ratio = logical_compressed_bits / original_bits
+        logical_reduction = (1.0 - logical_ratio) * 100
+    else:
+        logical_ratio = 0.0
+        logical_reduction = 0.0
+
+    # Métricas físicas (en disco)
     if original_bytes > 0:
         ratio_compresion = compressed_bytes / original_bytes
         porcentaje_comprimido = ratio_compresion * 100
@@ -131,6 +146,12 @@ def measure_algorithm(
         
         "logical_original_size_bytes": logical_bytes,
         "logical_original_size_bits": logical_bits,
+        
+        "logical_compressed_size_bytes": logical_compressed_bytes,
+        "logical_compressed_size_bits": logical_compressed_bits,
+        
+        "logical_compression_ratio": logical_ratio,
+        "logical_reduction_percentage": logical_reduction,
         
         "compression_ratio": ratio_compresion,
         "porcentaje_comprimido": porcentaje_comprimido,
